@@ -250,6 +250,8 @@ The car is PATH relative to user option `denote-directory'."
           (denote-refs--show)
           (add-hook 'before-save-hook #'denote-refs--remove nil t)
           (add-hook 'after-save-hook #'denote-refs--show nil t)
+          (add-hook 'org-capture-prepare-finalize-hook
+                    #'denote-refs--remove nil t)
           (setq denote-refs--idle-update-timer
                 (run-with-idle-timer
                  (car denote-refs-update-delay) t
@@ -258,6 +260,8 @@ The car is PATH relative to user option `denote-directory'."
       (denote-refs--remove)
       (remove-hook 'before-save-hook #'denote-refs--remove t)
       (remove-hook 'after-save-hook #'denote-refs--show t)
+      (remove-hook 'org-capture-prepare-finalize-hook
+                   #'denote-refs--remove t)
       (mapc #'kill-local-variable locals))))
 
 (provide 'denote-refs)
