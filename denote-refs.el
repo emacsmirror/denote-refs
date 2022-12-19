@@ -112,7 +112,36 @@ the key is the absolute path.")
                           'action (lambda (_)
                                     (funcall denote-link-button-action
                                              (cdr ref))))
-           (insert ?\n)))))))
+           (insert ?\n))))
+      ('markdown-mode
+       ;; Insert references count.
+       (insert (if (eq refs 'not-ready)
+                   (format "<!-- ... %s -->\n" (if (eq section 'links)
+                                                   "links"
+                                                 "backlinks"))
+                 (format "<!-- %i %s%s\n" (length refs)
+                         (if (eq section 'links)
+                             "link"
+                           "backlink")
+                         (pcase (length refs)
+                           (0 " -->")
+                           (1 ":")
+                           (_ "s:")))))
+       ;; Insert reference list.
+       (when (listp refs)
+         (while refs
+           (let ((ref (pop refs)))
+             (insert "  ")
+             (insert-button
+              (car ref)
+              'help-echo (cdr ref)
+              'face 'denote-faces-link
+              'action (lambda (_)
+                        (funcall denote-link-button-action
+                                 (cdr ref))))
+             (unless refs
+               (insert " -->"))
+             (insert ?\n))))))))
 
 (defun denote-refs--goto-end-of-front-matter ()
   "Go to the end of front matter of the note."
