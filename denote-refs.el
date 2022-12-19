@@ -86,7 +86,9 @@ the key is the absolute path.")
                 ('links denote-refs--links)
                 ('backlinks denote-refs--backlinks))))
     (pcase major-mode
-      ('org-mode
+      ;; There's no comment syntax in `text-mode', so just follow
+      ;; `org-mode'.
+      ((or 'org-mode 'text-mode)
        ;; Insert references count.
        (insert (if (eq refs 'not-ready)
                    (format "# ... %s\n" (if (eq section 'links)
