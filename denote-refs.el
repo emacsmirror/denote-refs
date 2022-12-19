@@ -236,7 +236,7 @@ The car is PATH relative to user option `denote-directory'."
                    (eq denote-refs--backlinks 'not-ready))
                (car denote-refs-update-delay)
              (cdr denote-refs-update-delay))
-           t #'denote-refs--idle-update buffer))))
+           nil #'denote-refs--idle-update buffer))))
 
 (define-minor-mode denote-refs-mode
   "Toggle showing links and backlinks in Denote notes."
@@ -254,7 +254,7 @@ The car is PATH relative to user option `denote-directory'."
                     #'denote-refs--remove nil t)
           (setq denote-refs--idle-update-timer
                 (run-with-idle-timer
-                 (car denote-refs-update-delay) t
+                 (car denote-refs-update-delay) nil
                  #'denote-refs--idle-update (current-buffer))))
       (cancel-timer denote-refs--idle-update-timer)
       (denote-refs--remove)
