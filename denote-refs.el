@@ -199,18 +199,21 @@ The car is PATH relative to user option `denote-directory'."
 
 (defun denote-refs--fetch ()
   "Fetch reference information."
-  (when (and (buffer-file-name) (file-exists-p (buffer-file-name)))
-    (dolist (section denote-refs-sections)
-      (pcase-exhaustive section
-        ('links
-         (setq denote-refs--links
+  (dolist (section denote-refs-sections)
+    (pcase-exhaustive section
+      ('links
+       (setq denote-refs--links
+             (when (and (buffer-file-name)
+                        (file-exists-p (buffer-file-name)))
                (mapcar #'denote-refs--make-path-relative
                        (denote-link--expand-identifiers
                         (denote--link-in-context-regexp
                          (denote-filetype-heuristics
-                          (buffer-file-name)))))))
-        ('backlinks
-         (setq denote-refs--backlinks
+                          (buffer-file-name))))))))
+      ('backlinks
+       (setq denote-refs--backlinks
+             (when (and (buffer-file-name)
+                        (file-exists-p (buffer-file-name)))
                (mapcar #'denote-refs--make-path-relative
                        (delete (buffer-file-name)
                                (denote--retrieve-files-in-xrefs
