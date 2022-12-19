@@ -5,8 +5,8 @@
 ;; Author: Akib Azmain Turja <akib@disroot.org>
 ;; Created: 2022-12-18
 ;; Version: 0.1
-;; Package-Requires: ((emacs "28.1"))
-;; Keywords: hypermedia outlines files
+;; Package-Requires: ((emacs "28.1") (denote "1.1.0"))
+;; Keywords: hypermedia, outlines, files
 ;; URL: https://codeberg.org/akib/emacs-denote-refs
 
 ;; This file is not part of GNU Emacs.
@@ -39,9 +39,6 @@
 (defgroup denote-refs nil
   "Show links and backlinks in Denote notes."
   :group 'denote
-  :group 'hypermedia
-  :group 'outlines
-  :group 'files
   :link '(url-link "https://codeberg.org/akib/emacs-denote-refs")
   :prefix "denote-refs-")
 
@@ -62,8 +59,8 @@ before updating the reference lists to keep the lists to updated."
 
 Available sections are `links' and `backlinks', which shows the list
 of linked file and the list of backlinks respectively."
-  :type '(set (const :tag "Links" links)
-              (const :tag "Backlinks" backlinks)))
+  :type '(repeat (choice (const :tag "Links" links)
+                         (const :tag "Backlinks" backlinks))))
 
 (defvar denote-refs--links 'not-ready
   "Alist of linked files.
@@ -85,63 +82,63 @@ the key is the absolute path.")
   (let ((refs (pcase section
                 ('links denote-refs--links)
                 ('backlinks denote-refs--backlinks))))
-    (pcase major-mode
-      ;; There's no comment syntax in `text-mode', so just follow
-      ;; `org-mode'.
-      ((or 'org-mode 'text-mode)
-       ;; Insert references count.
-       (insert (if (eq refs 'not-ready)
-                   (format "# ... %s\n" (if (eq section 'links)
-                                            "links"
-                                          "backlinks"))
-                 (format "# %i %s%s\n" (length refs)
-                         (if (eq section 'links)
-                             "link"
-                           "backlink")
-                         (pcase (length refs)
-                           (0 "")
-                           (1 ":")
-                           (_ "s:")))))
-       ;; Insert reference list.
-       (when (listp refs)
-         (dolist (ref refs)
-           (insert "#   ")
-           (insert-button (car ref)
-                          'help-echo (cdr ref)
-                          'face 'denote-faces-link
-                          'action (lambda (_)
-                                    (funcall denote-link-button-action
-                                             (cdr ref))))
-           (insert ?\n))))
-      ('markdown-mode
-       ;; Insert references count.
-       (insert (if (eq refs 'not-ready)
-                   (format "<!-- ... %s -->\n" (if (eq section 'links)
-                                                   "links"
-                                                 "backlinks"))
-                 (format "<!-- %i %s%s\n" (length refs)
-                         (if (eq section 'links)
-                             "link"
-                           "backlink")
-                         (pcase (length refs)
-                           (0 " -->")
-                           (1 ":")
-                           (_ "s:")))))
-       ;; Insert reference list.
-       (when (listp refs)
-         (while refs
-           (let ((ref (pop refs)))
-             (insert "  ")
-             (insert-button
-              (car ref)
-              'help-echo (cdr ref)
-              'face 'denote-faces-link
-              'action (lambda (_)
-                        (funcall denote-link-button-action
-                                 (cdr ref))))
-             (unless refs
-               (insert " -->"))
-             (insert ?\n))))))))
+    (cond
+     ;; There's no comment syntax in `text-mode', so just follow
+     ;; `org-mode'.
+     ((derived-mode-p 'org-mode 'text-mode)
+      ;; Insert references count.
+      (insert (if (eq refs 'not-ready)
+                  (format "# ... %s\n" (if (eq section 'links)
+                                           "links"
+                                         "backlinks"))
+                (format "# %i %s%s\n" (length refs)
+                        (if (eq section 'links)
+                            "link"
+                          "backlink")
+                        (pcase (length refs)
+                          (0 "")
+                          (1 ":")
+                          (_ "s:")))))
+      ;; Insert reference list.
+      (when (listp refs)
+        (dolist (ref refs)
+          (insert "#   ")
+          (insert-button (car ref)
+                         'help-echo (cdr ref)
+                         'face 'denote-faces-link
+                         'action (lambda (_)
+                                   (funcall denote-link-button-action
+                                            (cdr ref))))
+          (insert ?\n))))
+     ((derived-mode-p 'markdown-mode)
+      ;; Insert references count.
+      (insert (if (eq refs 'not-ready)
+                  (format "<!-- ... %s -->\n" (if (eq section 'links)
+                                                  "links"
+                                                "backlinks"))
+                (format "<!-- %i %s%s\n" (length refs)
+                        (if (eq section 'links)
+                            "link"
+                          "backlink")
+                        (pcase (length refs)
+                          (0 " -->")
+                          (1 ":")
+                          (_ "s:")))))
+      ;; Insert reference list.
+      (when (listp refs)
+        (while refs
+          (let ((ref (pop refs)))
+            (insert "  ")
+            (insert-button
+             (car ref)
+             'help-echo (cdr ref)
+             'face 'denote-faces-link
+             'action (lambda (_)
+                       (funcall denote-link-button-action
+                                (cdr ref))))
+            (unless refs
+              (insert " -->"))
+            (insert ?\n))))))))
 
 (defun denote-refs--goto-end-of-front-matter ()
   "Go to the end of front matter of the note."
@@ -164,10 +161,9 @@ the key is the absolute path.")
                        (point-max))))
           (when (< end (point-max))
             (setq end (1+ end)))
-          (let ((mod-flag (buffer-modified-p))
-                (inhibit-read-only t))
-            (delete-region (point) end)
-            (restore-buffer-modified-p mod-flag)))))))
+          (let ((inhibit-read-only t))
+            (with-silent-modifications
+              (delete-region (point) end))))))))
 
 (defun denote-refs--show ()
   "Show references."
@@ -178,18 +174,17 @@ the key is the absolute path.")
     (save-excursion
       (denote-refs--goto-end-of-front-matter)
       (let ((begin (point))
-            (mod-flag (buffer-modified-p))
             (inhibit-read-only t))
-        (dolist (section denote-refs-sections)
-          (pcase-exhaustive section
-            ('links
-             (denote-refs--render 'links))
-            ('backlinks
-             (denote-refs--render 'backlinks))))
-        (put-text-property begin (point) 'read-only t)
-        (put-text-property begin (point) 'denote-refs--sections t)
-        (insert ?\n)
-        (restore-buffer-modified-p mod-flag)))))
+        (with-silent-modifications
+          (dolist (section denote-refs-sections)
+            (pcase-exhaustive section
+              ('links
+               (denote-refs--render 'links))
+              ('backlinks
+               (denote-refs--render 'backlinks))))
+          (put-text-property begin (point) 'read-only t)
+          (put-text-property begin (point) 'denote-refs--sections t)
+          (insert ?\n))))))
 
 (defun denote-refs--make-path-relative (path)
   "Return a cons of relative and absolute version of PATH.
@@ -199,26 +194,27 @@ The car is PATH relative to user option `denote-directory'."
 
 (defun denote-refs--fetch ()
   "Fetch reference information."
-  (dolist (section denote-refs-sections)
+  (dolist (section (seq-uniq denote-refs-sections))
     (pcase-exhaustive section
       ('links
        (setq denote-refs--links
-             (when (and (buffer-file-name)
-                        (file-exists-p (buffer-file-name)))
-               (mapcar #'denote-refs--make-path-relative
-                       (denote-link--expand-identifiers
-                        (denote--link-in-context-regexp
-                         (denote-filetype-heuristics
-                          (buffer-file-name))))))))
+             (and (buffer-file-name)
+                  (file-exists-p (buffer-file-name))
+                  (mapcar #'denote-refs--make-path-relative
+                          (denote-link--expand-identifiers
+                           (denote--link-in-context-regexp
+                            (denote-filetype-heuristics
+                             (buffer-file-name))))))))
       ('backlinks
        (setq denote-refs--backlinks
-             (when (and (buffer-file-name)
-                        (file-exists-p (buffer-file-name)))
-               (mapcar #'denote-refs--make-path-relative
-                       (delete (buffer-file-name)
-                               (denote--retrieve-files-in-xrefs
-                                (denote-retrieve-filename-identifier
-                                 (buffer-file-name)))))))))))
+             (and (buffer-file-name)
+                  (file-exists-p (buffer-file-name))
+                  (mapcar
+                   #'denote-refs--make-path-relative
+                   (delete (buffer-file-name)
+                           (denote--retrieve-files-in-xrefs
+                            (denote-retrieve-filename-identifier
+                             (buffer-file-name)))))))))))
 
 (defun denote-refs-update ()
   "Update Denote references shown."
@@ -242,6 +238,7 @@ The car is PATH relative to user option `denote-directory'."
                (cdr denote-refs-update-delay))
              nil #'denote-refs--idle-update buffer)))))
 
+;;;###autoload
 (define-minor-mode denote-refs-mode
   "Toggle showing links and backlinks in Denote notes."
   :lighter " Denote-Refs"
