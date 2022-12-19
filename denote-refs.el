@@ -225,18 +225,19 @@ The car is PATH relative to user option `denote-directory'."
 
 (defun denote-refs--idle-update (buffer)
   "Update Denote references shown on BUFFER, but don't block."
-  (with-current-buffer buffer
-    (while-no-input
-      (denote-refs-update))
-    (denote-refs--show)
-    (cancel-timer denote-refs--idle-update-timer)
-    (setq denote-refs--idle-update-timer
-          (run-with-idle-timer
-           (if (or (eq denote-refs--links 'not-ready)
-                   (eq denote-refs--backlinks 'not-ready))
-               (car denote-refs-update-delay)
-             (cdr denote-refs-update-delay))
-           nil #'denote-refs--idle-update buffer))))
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (while-no-input
+        (denote-refs-update))
+      (denote-refs--show)
+      (cancel-timer denote-refs--idle-update-timer)
+      (setq denote-refs--idle-update-timer
+            (run-with-idle-timer
+             (if (or (eq denote-refs--links 'not-ready)
+                     (eq denote-refs--backlinks 'not-ready))
+                 (car denote-refs-update-delay)
+               (cdr denote-refs-update-delay))
+             nil #'denote-refs--idle-update buffer)))))
 
 (define-minor-mode denote-refs-mode
   "Toggle showing links and backlinks in Denote notes."
