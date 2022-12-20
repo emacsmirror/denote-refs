@@ -238,6 +238,26 @@ The car is PATH relative to user option `denote-directory'."
                (cdr denote-refs-update-delay))
              nil #'denote-refs--idle-update buffer)))))
 
+;; Once added, we won't ever remove this advice, so we've to be extra
+;; careful.
+(defun denote-refs--fix-xref--collect-matches (fn hit &rest args)
+  "Advice around `xref--collect-match' to ignore reference lists.
+
+FN is the original definition of `xref--collect-matches', HIT and ARGS
+are it's arguments."
+  (let* ((file (cadr hit))
+         (file (and file (concat xref--hits-remote-id file)))
+         (buf (xref--find-file-buffer file)))
+    (if (and buf (buffer-local-value 'denote-refs-mode buf))
+        (progn
+          (with-current-buffer buf
+            (denote-refs--remove))
+          (unwind-protect
+              (apply fn hit args)
+            (with-current-buffer buf
+              (denote-refs--show))))
+      (apply fn hit args))))
+
 ;;;###autoload
 (define-minor-mode denote-refs-mode
   "Toggle showing links and backlinks in Denote notes."
@@ -256,7 +276,10 @@ The car is PATH relative to user option `denote-directory'."
           (setq denote-refs--idle-update-timer
                 (run-with-idle-timer
                  (car denote-refs-update-delay) nil
-                 #'denote-refs--idle-update (current-buffer))))
+                 #'denote-refs--idle-update (current-buffer)))
+          ;; We won't ever remove this advice.
+          (advice-add #'xref--collect-matches :around
+                      #'denote-refs--fix-xref--collect-matches))
       (cancel-timer denote-refs--idle-update-timer)
       (denote-refs--remove)
       (remove-hook 'before-save-hook #'denote-refs--remove t)
