@@ -234,8 +234,8 @@ The car is PATH relative to user option `denote-directory'."
             (run-with-idle-timer
              (if (or (eq denote-refs--links 'not-ready)
                      (eq denote-refs--backlinks 'not-ready))
-                 (car denote-refs-update-delay)
-               (cdr denote-refs-update-delay))
+                 (cadr denote-refs-update-delay)
+               (caddr denote-refs-update-delay))
              nil #'denote-refs--idle-update buffer)))))
 
 ;; Once added, we won't ever remove this advice, so we've to be extra
