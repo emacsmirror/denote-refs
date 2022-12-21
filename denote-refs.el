@@ -201,10 +201,11 @@ The car is PATH relative to user option `denote-directory'."
              (and (buffer-file-name)
                   (file-exists-p (buffer-file-name))
                   (mapcar #'denote-refs--make-path-relative
-                          (denote-link--expand-identifiers
-                           (denote--link-in-context-regexp
-                            (denote-filetype-heuristics
-                             (buffer-file-name))))))))
+                          (delete-dups
+                           (denote-link--expand-identifiers
+                            (denote--link-in-context-regexp
+                             (denote-filetype-heuristics
+                              (buffer-file-name)))))))))
       ('backlinks
        (setq denote-refs--backlinks
              (and (buffer-file-name)
