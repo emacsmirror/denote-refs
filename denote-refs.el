@@ -74,7 +74,10 @@ the key is the absolute path.")
 The key is the path relative to user option `denote-directory', and
 the key is the absolute path.")
 
-(defvar denote-refs--idle-update-timer nil
+(defvar denote-refs--schedule-idle-update-timer nil
+  "Timer to schedule updating references while idle.")
+
+(defvar denote-refs--idle-update-timers nil
   "Timer to update references while idle.")
 
 (defun denote-refs--render (section)
@@ -87,7 +90,8 @@ the key is the absolute path.")
      ;; `org-mode'.
      ((derived-mode-p 'org-mode 'text-mode)
       ;; Insert references count.
-      (insert (if (eq refs 'not-ready)
+      (insert (if (or (eq refs 'not-ready)
+                      (eq refs 'error))
                   (format "# ... %s\n" (if (eq section 'links)
                                            "links"
                                          "backlinks"))
@@ -112,7 +116,8 @@ the key is the absolute path.")
           (insert ?\n))))
      ((derived-mode-p 'markdown-mode)
       ;; Insert references count.
-      (insert (if (eq refs 'not-ready)
+      (insert (if (or (eq refs 'not-ready)
+                      (eq refs 'error))
                   (format "<!-- ... %s -->\n" (if (eq section 'links)
                                                   "links"
                                                 "backlinks"))
@@ -198,24 +203,28 @@ The car is PATH relative to user option `denote-directory'."
     (pcase-exhaustive section
       ('links
        (setq denote-refs--links
-             (and (buffer-file-name)
-                  (file-exists-p (buffer-file-name))
-                  (mapcar #'denote-refs--make-path-relative
-                          (delete-dups
-                           (denote-link--expand-identifiers
-                            (denote--link-in-context-regexp
-                             (denote-filetype-heuristics
-                              (buffer-file-name)))))))))
+             (condition-case-unless-debug nil
+                 (and (buffer-file-name)
+                      (file-exists-p (buffer-file-name))
+                      (mapcar #'denote-refs--make-path-relative
+                              (delete-dups
+                               (denote-link--expand-identifiers
+                                (denote--link-in-context-regexp
+                                 (denote-filetype-heuristics
+                                  (buffer-file-name)))))))
+               (error 'error))))
       ('backlinks
        (setq denote-refs--backlinks
-             (and (buffer-file-name)
-                  (file-exists-p (buffer-file-name))
-                  (mapcar
-                   #'denote-refs--make-path-relative
-                   (delete (buffer-file-name)
-                           (denote--retrieve-files-in-xrefs
-                            (denote-retrieve-filename-identifier
-                             (buffer-file-name)))))))))))
+             (condition-case-unless-debug nil
+                 (and (buffer-file-name)
+                      (file-exists-p (buffer-file-name))
+                      (mapcar
+                       #'denote-refs--make-path-relative
+                       (delete (buffer-file-name)
+                               (denote--retrieve-files-in-xrefs
+                                (denote-retrieve-filename-identifier
+                                 (buffer-file-name))))))
+               (error 'error)))))))
 
 (defun denote-refs-update ()
   "Update Denote references shown."
@@ -229,18 +238,16 @@ The car is PATH relative to user option `denote-directory'."
     (with-current-buffer buffer
       (while-no-input
         (denote-refs-update))
-      (denote-refs--show)
-      (cancel-timer denote-refs--idle-update-timer)
-      (setq denote-refs--idle-update-timer
-            (run-with-idle-timer
-             (if (or (eq denote-refs--links 'not-ready)
-                     (eq denote-refs--backlinks 'not-ready))
-                 (cadr denote-refs-update-delay)
-               (caddr denote-refs-update-delay))
-             nil #'denote-refs--idle-update buffer)))))
+      (denote-refs--show))))
 
-;; Once added, we won't ever remove this advice, so we've to be extra
-;; careful.
+(defun denote-refs-update-all ()
+  "Update Denote references shown on all buffers."
+  (interactive)
+  (dolist (buffer (buffer-list))
+    (when (buffer-local-value 'denote-refs-mode buffer)
+      (with-current-buffer buffer
+        (denote-refs-update)))))
+
 (defun denote-refs--fix-xref--collect-matches (fn hit &rest args)
   "Advice around `xref--collect-match' to ignore reference lists.
 
@@ -259,13 +266,35 @@ are it's arguments."
               (denote-refs--show))))
       (apply fn hit args))))
 
+(defun denote-refs--schedule-idle-update ()
+  "Schedule updating Denote references shown."
+  (mapc #'cancel-timer denote-refs--idle-update-timers)
+  (setq denote-refs--idle-update-timers nil)
+  (and (eq (while-no-input
+             (dolist (buffer (buffer-list))
+               (when (buffer-local-value 'denote-refs-mode buffer)
+                 (with-current-buffer buffer
+                   (push
+                    (run-with-idle-timer
+                     (if (or (eq denote-refs--links 'not-ready)
+                             (eq denote-refs--backlinks 'not-ready))
+                         (cadr denote-refs-update-delay)
+                       (caddr denote-refs-update-delay))
+                     nil #'denote-refs--idle-update buffer)
+                    denote-refs--idle-update-timers))))
+             'finish)
+           'finish)
+       (not denote-refs--idle-update-timers)
+       (progn
+         (advice-remove #'xref--collect-matches
+                        #'denote-refs--fix-xref--collect-matches)
+         (cancel-timer denote-refs--schedule-idle-update-timer))))
+
 ;;;###autoload
 (define-minor-mode denote-refs-mode
   "Toggle showing links and backlinks in Denote notes."
   :lighter " Denote-Refs"
-  (let ((locals '(denote-refs--links
-                  denote-refs--backlinks
-                  denote-refs--idle-update-timer)))
+  (let ((locals '(denote-refs--links denote-refs--backlinks)))
     (if denote-refs-mode
         (progn
           (mapc #'make-local-variable locals)
@@ -274,14 +303,22 @@ are it's arguments."
           (add-hook 'after-save-hook #'denote-refs--show nil t)
           (add-hook 'org-capture-prepare-finalize-hook
                     #'denote-refs--remove nil t)
-          (setq denote-refs--idle-update-timer
-                (run-with-idle-timer
-                 (car denote-refs-update-delay) nil
-                 #'denote-refs--idle-update (current-buffer)))
-          ;; We won't ever remove this advice.
+          ;; This runs just once, so we don't bother to keep track of
+          ;; it.  ;)
+          (run-with-idle-timer
+           (car denote-refs-update-delay) nil
+           #'denote-refs--idle-update (current-buffer))
           (advice-add #'xref--collect-matches :around
-                      #'denote-refs--fix-xref--collect-matches))
-      (cancel-timer denote-refs--idle-update-timer)
+                      #'denote-refs--fix-xref--collect-matches)
+          ;; This timer takes care of reverting the advice and also
+          ;; canceling the timer itself.
+          (when denote-refs--schedule-idle-update-timer
+            (cancel-timer denote-refs--schedule-idle-update-timer))
+          (setq denote-refs--schedule-idle-update-timer
+                (run-with-idle-timer
+                 (min (cadr denote-refs-update-delay)
+                      (caddr denote-refs-update-delay))
+                 t #'denote-refs--schedule-idle-update)))
       (denote-refs--remove)
       (remove-hook 'before-save-hook #'denote-refs--remove t)
       (remove-hook 'after-save-hook #'denote-refs--show t)
