@@ -290,6 +290,16 @@ are it's arguments."
                         #'denote-refs--fix-xref--collect-matches)
          (cancel-timer denote-refs--schedule-idle-update-timer))))
 
+(defun denote-refs--before-write-region (_ _)
+  "Make sure `write-region' doesn't write the reference lists."
+  (let ((buf (get-buffer-create " *denote-refs-tmp-write-region*"))
+        (str (buffer-string)))
+    (set-buffer buf)
+    (let ((inhibit-read-only t))
+      (erase-buffer))
+    (insert str)
+    (denote-refs--remove)))
+
 ;;;###autoload
 (define-minor-mode denote-refs-mode
   "Toggle showing links and backlinks in Denote notes."
@@ -299,8 +309,8 @@ are it's arguments."
         (progn
           (mapc #'make-local-variable locals)
           (denote-refs--show)
-          (add-hook 'before-save-hook #'denote-refs--remove nil t)
-          (add-hook 'after-save-hook #'denote-refs--show nil t)
+          (add-hook 'write-region-annotate-functions
+                    #'denote-refs--before-write-region nil t)
           (add-hook 'org-capture-prepare-finalize-hook
                     #'denote-refs--remove nil t)
           ;; This runs just once, so we don't bother to keep track of
