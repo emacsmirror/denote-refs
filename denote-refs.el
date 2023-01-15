@@ -4,7 +4,7 @@
 
 ;; Author: Akib Azmain Turja <akib@disroot.org>
 ;; Created: 2022-12-18
-;; Version: 0.1.1
+;; Version: 0.1.2
 ;; Package-Requires: ((emacs "28.1") (denote "1.1.0"))
 ;; Keywords: hypermedia, outlines, files
 ;; URL: https://codeberg.org/akib/emacs-denote-refs
